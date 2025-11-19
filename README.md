@@ -70,26 +70,6 @@ Speed buff stack display (1-4 stacks = 20-80% speed). Smooth animations, dynamic
 
 ---
 
-## Developer API
-
-**Create Module:** `modules/YourModule/YourModule.lua`
-```lua
-local MyModule = {version = "1.0.0", name = "MyModule"}
-function MyModule:OnInitialize() end
-function MyModule:OnCommand(args) end
-ElegastCore:RegisterModule("MyModule", MyModule)
-```
-
-**Core Utilities:**
-- `ElegastCore:CreateDraggableFrame(name, parent, w, h, defaultPos)`
-- `ElegastCore:MakeFrameScalable(frame)` - Adds griptape scaling
-- `ElegastCore.Easing.*` - Animation functions
-- `ElegastCoreDB.ModuleName` - Saved variables
-
-**Lifecycle:** PLAYER_LOGIN → OnInitialize() → OnEnable() → OnCommand()
-
----
-
 ## Troubleshooting
 
 **Not loading?** Ensure folder is named `ElegastCore`, then `/reload`
