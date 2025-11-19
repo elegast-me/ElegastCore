@@ -256,9 +256,9 @@ local function CreatePowerDisplay()
     PowerFrame:EnableMouse(true)
     PowerFrame:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("Infinite Power", 0.5, 0.8, 1.0, 1, true)
-        GameTooltip:AddLine("XP Stacks: " .. playerData.xpStacks, 1, 1, 1, true)
-        GameTooltip:AddLine("XP Bonus: +" .. playerData.xpPercentage .. "%", 0.4, 1.0, 0.4, true)
+        GameTooltip:SetText("Infinite Power (Account)", 0.5, 0.8, 1.0, 1, true)
+        GameTooltip:AddLine("Account XP Stacks: " .. playerData.xpStacks, 1, 1, 1, true)
+        GameTooltip:AddLine("Account XP Bonus: +" .. playerData.xpPercentage .. "%", 0.4, 1.0, 0.4, true)
         GameTooltip:AddLine(" ")
 
         -- Show progress to next stack
