@@ -1,0 +1,15 @@
+## Interface: 30300
+## Title: ElegastCore
+## Notes: Modular addon for ElegastCore server-specific features
+## Author: ElegastCore Development Team
+## Version: 1.0.0
+## SavedVariables: ElegastCoreDB
+
+# Core system (must load first)
+Core.lua
+
+# Modules (load order matters - add new modules here)
+modules\SpeedBuff\SpeedBuff.lua
+modules\InfinitePower\InfinitePower.lua
+modules\ThreatenedAzeroth\ThreatenedAzeroth.lua
+modules\ThreatenedAzeroth\ThreatenedAzeroth.lua
