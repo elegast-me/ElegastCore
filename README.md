@@ -9,11 +9,17 @@ Unified, extensible addon for custom WotLK server enhancements. One addon for al
 ## Features
 
 ✨ **Modular Architecture** - Easy to extend
+
 🎮 **Draggable & Scalable UI** - Customize position and size of all displays
+
 🔧 **Configurable** - Enable/disable modules individually
+
 🎨 **Smooth Animations** - Professional polish
+
 📦 **All-in-One** - Single addon install
+
 👁️ **Minimal Mode** - Toggle compact text-only displays (right-click or command)
+
 
 ---
 
