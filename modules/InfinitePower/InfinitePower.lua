@@ -1,11 +1,11 @@
 --[[
     InfinitePower Module for ElegastCore
-    Displays XP stacks, stat points, and allows stat allocation
+    Displays XP stacks, stat points, gear bonuses, and allows stat allocation
 ]]--
 
 -- Create module table
 local InfinitePowerModule = {
-    version = "1.0.0",
+    version = "1.1.0",
     name = "InfinitePower"
 }
 
@@ -35,6 +35,7 @@ local function ResetPlayerData()
     playerData.questsThisStack = 0
     playerData.questsNeeded = 3
     playerData.stats = {}
+    playerData.gearBonuses = {} -- Gear bonus data: slot -> {statType, amount}
 end
 
 -- Stat type configuration
@@ -48,6 +49,69 @@ local STAT_TYPES = {
     {id = 6, name = "Haste Rating", shortName = "HASTE", icon = "Interface\\Icons\\Spell_Nature_Bloodlust"},
     {id = 7, name = "Spell Power", shortName = "SP", icon = "Interface\\Icons\\Spell_Holy_HolySmite"},
 }
+
+-- Equipment slot ID to name mapping (for gear bonus display)
+local EQUIPMENT_SLOTS = {
+    [0] = "Head",
+    [1] = "Neck",
+    [2] = "Shoulders",
+    [3] = "Shirt",
+    [4] = "Chest",
+    [5] = "Waist",
+    [6] = "Legs",
+    [7] = "Feet",
+    [8] = "Wrists",
+    [9] = "Hands",
+    [10] = "Finger 1",
+    [11] = "Finger 2",
+    [12] = "Trinket 1",
+    [13] = "Trinket 2",
+    [14] = "Back",
+    [15] = "Main Hand",
+    [16] = "Off Hand",
+    [17] = "Ranged",
+    [18] = "Tabard",
+}
+
+-- Equipment slot ID to inventory slot ID mapping (for item tooltip matching)
+-- WoW inventory slot IDs are 1-indexed for GetInventoryItemLink
+local SLOT_TO_INVENTORY = {
+    [0] = 1,   -- Head
+    [1] = 2,   -- Neck
+    [2] = 3,   -- Shoulders
+    [3] = 4,   -- Shirt
+    [4] = 5,   -- Chest
+    [5] = 6,   -- Waist
+    [6] = 7,   -- Legs
+    [7] = 8,   -- Feet
+    [8] = 9,   -- Wrists
+    [9] = 10,  -- Hands
+    [10] = 11, -- Finger 1
+    [11] = 12, -- Finger 2
+    [12] = 13, -- Trinket 1
+    [13] = 14, -- Trinket 2
+    [14] = 15, -- Back
+    [15] = 16, -- Main Hand
+    [16] = 17, -- Off Hand
+    [17] = 18, -- Ranged
+    [18] = 19, -- Tabard
+}
+
+-- Reverse mapping: inventory slot ID to our slot ID
+local INVENTORY_TO_SLOT = {}
+for slot, invSlot in pairs(SLOT_TO_INVENTORY) do
+    INVENTORY_TO_SLOT[invSlot] = slot
+end
+
+-- Helper: Get stat name from stat type ID
+local function GetStatName(statType)
+    for _, stat in ipairs(STAT_TYPES) do
+        if stat.id == statType then
+            return stat.name
+        end
+    end
+    return "Unknown"
+end
 
 -- Chat filter to hide our messages from displaying in chat
 local function ChatFilter(self, event, msg, ...)
@@ -75,7 +139,8 @@ local function SavePlayerData()
         totalQuests = playerData.totalQuests,
         questsThisStack = playerData.questsThisStack,
         questsNeeded = playerData.questsNeeded,
-        stats = playerData.stats
+        stats = playerData.stats,
+        gearBonuses = playerData.gearBonuses
     }
 end
 
@@ -116,6 +181,7 @@ local function LoadPlayerData()
         playerData.questsThisStack = saved.questsThisStack or 0
         playerData.questsNeeded = saved.questsNeeded or 3
         playerData.stats = saved.stats or {}
+        playerData.gearBonuses = saved.gearBonuses or {}
         return true
     end
     return false
@@ -153,6 +219,21 @@ local function ParseServerMessage(message)
                     local statType, statAmt = string.match(statPair, "(%d+):(%d+)")
                     if statType and statAmt then
                         playerData.stats[tonumber(statType)] = tonumber(statAmt)
+                    end
+                end
+            end
+        elseif key == "GEAR" then
+            -- Parse gear bonuses: "slot:statType:amount,slot:statType:amount,..."
+            playerData.gearBonuses = {}
+            if parts[2] then
+                local gearData = table.concat(parts, ":", 2)  -- Rejoin after "GEAR"
+                for gearEntry in string.gmatch(gearData, "[^,]+") do
+                    local slot, statType, amount = string.match(gearEntry, "(%d+):(%d+):(%d+)")
+                    if slot and statType and amount then
+                        playerData.gearBonuses[tonumber(slot)] = {
+                            statType = tonumber(statType),
+                            amount = tonumber(amount)
+                        }
                     end
                 end
             end
@@ -289,16 +370,34 @@ local function CreatePowerDisplay()
             GameTooltip:AddLine("Bonus Stats:", 0.7, 0.7, 0.7, true)
             for statType, amount in pairs(playerData.stats) do
                 if amount > 0 then
-                    local statName = "Unknown"
-                    for _, stat in ipairs(STAT_TYPES) do
-                        if stat.id == statType then
-                            statName = stat.name
-                            break
-                        end
-                    end
+                    local statName = GetStatName(statType)
                     GameTooltip:AddLine("  +" .. amount .. " " .. statName, 0.4, 1.0, 0.4, true)
                 end
             end
+        end
+
+        -- Show gear bonuses summary
+        local hasGearBonuses = false
+        local totalGearBonus = 0
+        for slot, bonus in pairs(playerData.gearBonuses) do
+            if bonus.amount > 0 then
+                hasGearBonuses = true
+                totalGearBonus = totalGearBonus + bonus.amount
+            end
+        end
+
+        if hasGearBonuses then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Gear Bonuses:", 0.7, 0.7, 0.7, true)
+            for slot, bonus in pairs(playerData.gearBonuses) do
+                if bonus.amount > 0 then
+                    local slotName = EQUIPMENT_SLOTS[slot] or "Unknown"
+                    local statName = GetStatName(bonus.statType)
+                    GameTooltip:AddLine("  " .. slotName .. ": +" .. bonus.amount .. " " .. statName, 0.4, 0.8, 1.0, true)
+                end
+            end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("Total Gear Bonus: +" .. totalGearBonus .. " stats", 0.4, 1.0, 0.8, true)
         end
 
         GameTooltip:AddLine(" ")
@@ -372,6 +471,73 @@ local function CreatePowerDisplay()
     return PowerFrame
 end
 
+-- Hook item tooltips to show gear bonuses
+local function SetupTooltipHooks()
+    -- Helper function to find gear bonus for an equipped item
+    local function GetGearBonusForItem(tooltip)
+        -- Get the item link from the tooltip
+        local _, itemLink = tooltip:GetItem()
+        if not itemLink then return nil, nil end
+
+        -- Check each equipment slot to see if this item is equipped there
+        for slot, invSlot in pairs(SLOT_TO_INVENTORY) do
+            local equippedLink = GetInventoryItemLink("player", invSlot)
+            if equippedLink and equippedLink == itemLink then
+                -- This item is equipped in this slot, check for gear bonus
+                local bonus = playerData.gearBonuses[slot]
+                if bonus and bonus.amount > 0 then
+                    return bonus, slot
+                end
+            end
+        end
+
+        return nil, nil
+    end
+
+    -- Hook GameTooltip for item tooltips
+    GameTooltip:HookScript("OnTooltipSetItem", function(tooltip)
+        local bonus, slot = GetGearBonusForItem(tooltip)
+        if bonus then
+            local statName = GetStatName(bonus.statType)
+            tooltip:AddLine(" ")
+            tooltip:AddLine("|cff00FF00Infinite Power: +" .. bonus.amount .. " " .. statName .. "|r")
+            tooltip:Show()  -- Refresh tooltip to show new line
+        end
+    end)
+
+    -- Also hook ItemRefTooltip for shift-clicked items in chat
+    ItemRefTooltip:HookScript("OnTooltipSetItem", function(tooltip)
+        local bonus, slot = GetGearBonusForItem(tooltip)
+        if bonus then
+            local statName = GetStatName(bonus.statType)
+            tooltip:AddLine(" ")
+            tooltip:AddLine("|cff00FF00Infinite Power: +" .. bonus.amount .. " " .. statName .. "|r")
+            tooltip:Show()
+        end
+    end)
+
+    -- Hook ShoppingTooltip for comparison tooltips
+    ShoppingTooltip1:HookScript("OnTooltipSetItem", function(tooltip)
+        local bonus, slot = GetGearBonusForItem(tooltip)
+        if bonus then
+            local statName = GetStatName(bonus.statType)
+            tooltip:AddLine(" ")
+            tooltip:AddLine("|cff00FF00Infinite Power: +" .. bonus.amount .. " " .. statName .. "|r")
+            tooltip:Show()
+        end
+    end)
+
+    ShoppingTooltip2:HookScript("OnTooltipSetItem", function(tooltip)
+        local bonus, slot = GetGearBonusForItem(tooltip)
+        if bonus then
+            local statName = GetStatName(bonus.statType)
+            tooltip:AddLine(" ")
+            tooltip:AddLine("|cff00FF00Infinite Power: +" .. bonus.amount .. " " .. statName .. "|r")
+            tooltip:Show()
+        end
+    end)
+end
+
 -- Module initialization
 function InfinitePowerModule:OnInitialize()
     -- Always reset player data to defaults first
@@ -387,6 +553,9 @@ function InfinitePowerModule:OnInitialize()
 
     -- Create power display
     CreatePowerDisplay()
+
+    -- Setup tooltip hooks for gear bonuses
+    SetupTooltipHooks()
 
     -- Restore saved position if available
     if savedVars.point then
@@ -424,7 +593,7 @@ function InfinitePowerModule:OnInitialize()
     -- Show initial display with loaded data
     UpdateDisplay()
 
-    print("|cff66FFCCElegastCore:|r InfinitePower module initialized")
+    print("|cff66FFCCElegastCore:|r InfinitePower module v" .. InfinitePowerModule.version .. " initialized")
 end
 
 -- Module command handler
@@ -499,6 +668,28 @@ function InfinitePowerModule:OnCommand(args)
             print("|cff66FFCCElegastCore (InfinitePower):|r Minimal mode " .. statusText)
         end
 
+    elseif command == "gear" or command == "gearbonuses" then
+        -- Show gear bonus summary
+        print("|cff66FFCC===== Gear Bonuses =====|r")
+        local hasAny = false
+        local totalBonus = 0
+        for slot, bonus in pairs(playerData.gearBonuses) do
+            if bonus.amount > 0 then
+                hasAny = true
+                totalBonus = totalBonus + bonus.amount
+                local slotName = EQUIPMENT_SLOTS[slot] or "Unknown"
+                local statName = GetStatName(bonus.statType)
+                print("  " .. slotName .. ": |cff00FF00+" .. bonus.amount .. " " .. statName .. "|r")
+            end
+        end
+        if not hasAny then
+            print("  |cff888888No gear bonuses configured.|r")
+            print("  |cff888888Use the Book of Power to set up gear bonuses!|r")
+        else
+            print(" ")
+            print("  Total: |cff00FFCC+" .. totalBonus .. " stats|r from gear")
+        end
+
     else
         print("|cff66FFCC===== ElegastCore - InfinitePower Module =====|r")
         print("|cffFFFFFF/egc infinitepower unlock|r - Unlock to move and scale the display")
@@ -507,6 +698,7 @@ function InfinitePowerModule:OnCommand(args)
         print("|cffFFFFFF/egc infinitepower show|r - Show the display")
         print("|cffFFFFFF/egc infinitepower hide|r - Hide the display")
         print("|cffFFFFFF/egc infinitepower minimal [on/off]|r - Toggle minimal display mode")
+        print("|cffFFFFFF/egc infinitepower gear|r - Show gear bonus summary")
         print(" ")
         print("|cff888888Current Stats:|r")
         print("  XP Stacks: |cff00FF00" .. playerData.xpStacks .. "|r (+|cff00FF00" .. playerData.xpPercentage .. "%|r XP)")
@@ -516,6 +708,18 @@ function InfinitePowerModule:OnCommand(args)
         print("|cff888888Next Stack Progress:|r")
         print("  Kills: |cffFFFF00" .. playerData.killsThisStack .. "/" .. playerData.killsNeeded .. "|r")
         print("  Quests: |cffFFFF00" .. playerData.questsThisStack .. "/" .. playerData.questsNeeded .. "|r")
+
+        -- Show gear bonus count
+        local gearBonusCount = 0
+        for slot, bonus in pairs(playerData.gearBonuses) do
+            if bonus.amount > 0 then
+                gearBonusCount = gearBonusCount + 1
+            end
+        end
+        if gearBonusCount > 0 then
+            print(" ")
+            print("|cff888888Gear Bonuses:|r |cff00FFCC" .. gearBonusCount .. " slots configured|r (use /egc infinitepower gear for details)")
+        end
     end
 end
 
