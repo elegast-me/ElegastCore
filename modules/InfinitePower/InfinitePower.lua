@@ -48,6 +48,7 @@ local STAT_TYPES = {
     {id = 5, name = "Crit Rating", shortName = "CRIT", icon = "Interface\\Icons\\Ability_Rogue_Rupture"},
     {id = 6, name = "Haste Rating", shortName = "HASTE", icon = "Interface\\Icons\\Spell_Nature_Bloodlust"},
     {id = 7, name = "Spell Power", shortName = "SP", icon = "Interface\\Icons\\Spell_Holy_HolySmite"},
+    {id = 8, name = "Attack Power", shortName = "AP", icon = "Interface\\Icons\\Ability_Warrior_OffensiveStance"},
 }
 
 -- Equipment slot ID to name mapping (for gear bonus display)
