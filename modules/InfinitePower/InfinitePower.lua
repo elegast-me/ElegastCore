@@ -267,6 +267,22 @@ local function ParseServerMessage(message)
     SavePlayerData()
 end
 
+-- Update the gear bonus notification badge
+local function UpdateBadge()
+    if not PowerFrame or not PowerFrame.gearBadge then return end
+
+    local unconfiguredCount = CountUnconfiguredSlots()
+
+    if unconfiguredCount > 0 then
+        -- Show orange badge with count
+        PowerFrame.gearBadge:SetText("|cffFF8800[" .. unconfiguredCount .. "]|r")
+        PowerFrame.gearBadge:Show()
+    else
+        -- Hide badge when all configured or no gear equipped
+        PowerFrame.gearBadge:Hide()
+    end
+end
+
 -- Update display with current data
 local function UpdateDisplay()
     if not PowerFrame then return end
@@ -313,22 +329,6 @@ local function UpdateDisplay()
 
     -- Update gear bonus notification badge
     UpdateBadge()
-end
-
--- Update the gear bonus notification badge
-local function UpdateBadge()
-    if not PowerFrame or not PowerFrame.gearBadge then return end
-
-    local unconfiguredCount = CountUnconfiguredSlots()
-
-    if unconfiguredCount > 0 then
-        -- Show orange badge with count
-        PowerFrame.gearBadge:SetText("|cffFF8800[" .. unconfiguredCount .. "]|r")
-        PowerFrame.gearBadge:Show()
-    else
-        -- Hide badge when all configured or no gear equipped
-        PowerFrame.gearBadge:Hide()
-    end
 end
 
 -- Create the main power display frame
