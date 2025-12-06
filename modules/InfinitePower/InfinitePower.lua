@@ -116,19 +116,25 @@ end
 
 -- Helper: Count unconfigured gear bonus slots
 -- Returns the count of equipped items that don't have a gear bonus configured
+-- Matches server-side logic from premium.cpp (PR #122)
 local function CountUnconfiguredSlots()
     local count = 0
     for slot = 0, 18 do  -- All equipment slots (EQUIPMENT_SLOT_START to EQUIPMENT_SLOT_END - 1)
-        local invSlot = SLOT_TO_INVENTORY[slot]
-        if invSlot then
-            local itemLink = GetInventoryItemLink("player", invSlot)
-            if itemLink then
-                -- Item is equipped in this slot
-                -- Check if a bonus is configured for this slot
-                local bonus = playerData.gearBonuses[slot]
-                if not bonus or bonus.amount == 0 then
-                    -- No bonus configured or bonus amount is 0
-                    count = count + 1
+        -- Skip shirt (slot 3) and tabard (slot 18) - these can't have gear bonuses
+        if slot == 3 or slot == 18 then
+            -- Skip
+        else
+            local invSlot = SLOT_TO_INVENTORY[slot]
+            if invSlot then
+                local itemLink = GetInventoryItemLink("player", invSlot)
+                if itemLink then
+                    -- Item is equipped in this slot
+                    -- Check if a bonus is configured for this slot
+                    local bonus = playerData.gearBonuses[slot]
+                    if not bonus or bonus.amount == 0 then
+                        -- No bonus configured or bonus amount is 0
+                        count = count + 1
+                    end
                 end
             end
         end
