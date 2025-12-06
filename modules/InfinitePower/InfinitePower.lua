@@ -114,6 +114,28 @@ local function GetStatName(statType)
     return "Unknown"
 end
 
+-- Helper: Count unconfigured gear bonus slots
+-- Returns the count of equipped items that don't have a gear bonus configured
+local function CountUnconfiguredSlots()
+    local count = 0
+    for slot = 0, 18 do  -- All equipment slots (EQUIPMENT_SLOT_START to EQUIPMENT_SLOT_END - 1)
+        local invSlot = SLOT_TO_INVENTORY[slot]
+        if invSlot then
+            local itemLink = GetInventoryItemLink("player", invSlot)
+            if itemLink then
+                -- Item is equipped in this slot
+                -- Check if a bonus is configured for this slot
+                local bonus = playerData.gearBonuses[slot]
+                if not bonus or bonus.amount == 0 then
+                    -- No bonus configured or bonus amount is 0
+                    count = count + 1
+                end
+            end
+        end
+    end
+    return count
+end
+
 -- Chat filter to hide our messages from displaying in chat
 local function ChatFilter(self, event, msg, ...)
     if string.match(msg, "^INF_PWR:") then
@@ -288,6 +310,25 @@ local function UpdateDisplay()
         PowerFrame.xpBonusText:SetPoint("BOTTOM", PowerFrame, "BOTTOM", 0, -14)
         PowerFrame.xpBonusText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
     end
+
+    -- Update gear bonus notification badge
+    UpdateBadge()
+end
+
+-- Update the gear bonus notification badge
+local function UpdateBadge()
+    if not PowerFrame or not PowerFrame.gearBadge then return end
+
+    local unconfiguredCount = CountUnconfiguredSlots()
+
+    if unconfiguredCount > 0 then
+        -- Show orange badge with count
+        PowerFrame.gearBadge:SetText("|cffFF8800[" .. unconfiguredCount .. "]|r")
+        PowerFrame.gearBadge:Show()
+    else
+        -- Hide badge when all configured or no gear equipped
+        PowerFrame.gearBadge:Hide()
+    end
 end
 
 -- Create the main power display frame
@@ -331,6 +372,14 @@ local function CreatePowerDisplay()
     xpBonusText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
     xpBonusText:SetText("+0%")
     PowerFrame.xpBonusText = xpBonusText
+
+    -- Create gear bonus notification badge (top-right corner)
+    local gearBadge = PowerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    gearBadge:SetPoint("TOPRIGHT", PowerFrame, "TOPRIGHT", 5, 5)
+    gearBadge:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+    gearBadge:SetText("")
+    gearBadge:Hide()  -- Initially hidden
+    PowerFrame.gearBadge = gearBadge
 
     -- Removed stat points display - stats auto-apply now
 
@@ -406,6 +455,15 @@ local function CreatePowerDisplay()
         GameTooltip:AddLine("Total Kills: " .. playerData.totalKills, 0.8, 0.8, 0.8, true)
         GameTooltip:AddLine("Total Quests: " .. playerData.totalQuests, 0.8, 0.8, 0.8, true)
         GameTooltip:AddLine(" ")
+
+        -- Show gear bonus badge explanation if there are unconfigured slots
+        local unconfiguredCount = CountUnconfiguredSlots()
+        if unconfiguredCount > 0 then
+            GameTooltip:AddLine("|cffFF8800[" .. unconfiguredCount .. "]|r = Unconfigured gear slots", 1, 0.8, 0.4, true)
+            GameTooltip:AddLine("Use Book of Power to configure bonuses", 0.7, 0.7, 0.7, true)
+            GameTooltip:AddLine(" ")
+        end
+
         GameTooltip:AddLine("Right-Click to toggle minimal mode", 0.5, 0.5, 0.5, true)
         GameTooltip:AddLine("Shift + Drag to move", 0.5, 0.5, 0.5, true)
         GameTooltip:AddLine("/egc infinitepower unlock - to move/scale", 0.5, 0.5, 0.5, true)
@@ -581,13 +639,19 @@ function InfinitePowerModule:OnInitialize()
     -- Listen for system messages from server (INF_PWR prefix)
     local eventFrame = CreateFrame("Frame")
     eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
+    eventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")  -- Track gear changes
     eventFrame:SetScript("OnEvent", function(self, event, message)
-        -- Check if message starts with our prefix
-        if string.match(message, "^" .. ADDON_PREFIX .. ":") then
-            -- Remove prefix and parse
-            local data = string.gsub(message, "^" .. ADDON_PREFIX .. ":", "")
-            ParseServerMessage(data)
-            UpdateDisplay()
+        if event == "CHAT_MSG_SYSTEM" then
+            -- Check if message starts with our prefix
+            if string.match(message, "^" .. ADDON_PREFIX .. ":") then
+                -- Remove prefix and parse
+                local data = string.gsub(message, "^" .. ADDON_PREFIX .. ":", "")
+                ParseServerMessage(data)
+                UpdateDisplay()
+            end
+        elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+            -- Update badge when equipment changes
+            UpdateBadge()
         end
     end)
 
