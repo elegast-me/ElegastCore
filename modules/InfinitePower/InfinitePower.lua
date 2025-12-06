@@ -36,6 +36,7 @@ local function ResetPlayerData()
     playerData.questsNeeded = 3
     playerData.stats = {}
     playerData.gearBonuses = {} -- Gear bonus data: slot -> {statType, amount}
+    playerData.unconfiguredGearSlots = 0 -- Server-calculated count of unconfigured gear slots
 end
 
 -- Stat type configuration
@@ -141,7 +142,8 @@ local function SavePlayerData()
         questsThisStack = playerData.questsThisStack,
         questsNeeded = playerData.questsNeeded,
         stats = playerData.stats,
-        gearBonuses = playerData.gearBonuses
+        gearBonuses = playerData.gearBonuses,
+        unconfiguredGearSlots = playerData.unconfiguredGearSlots
     }
 end
 
@@ -183,6 +185,7 @@ local function LoadPlayerData()
         playerData.questsNeeded = saved.questsNeeded or 3
         playerData.stats = saved.stats or {}
         playerData.gearBonuses = saved.gearBonuses or {}
+        playerData.unconfiguredGearSlots = saved.unconfiguredGearSlots or 0
         return true
     end
     return false
@@ -238,11 +241,32 @@ local function ParseServerMessage(message)
                     end
                 end
             end
+        elseif key == "UNCFG" then
+            -- Parse unconfigured gear slots count (from server, Issue #7)
+            playerData.unconfiguredGearSlots = tonumber(parts[2]) or 0
         end
     end
 
     -- Save to persistent storage
     SavePlayerData()
+end
+
+-- Update the gear bonus notification badge
+-- Uses server-provided unconfigured count (Issue #7)
+local function UpdateBadge()
+    if not PowerFrame or not PowerFrame.gearBadge then return end
+
+    -- Use server-calculated count (matches Book of Power logic exactly)
+    local unconfiguredCount = playerData.unconfiguredGearSlots or 0
+
+    if unconfiguredCount > 0 then
+        -- Show orange badge with count
+        PowerFrame.gearBadge:SetText("|cffFF8800[" .. unconfiguredCount .. "]|r")
+        PowerFrame.gearBadge:Show()
+    else
+        -- Hide badge when all configured or no gear equipped
+        PowerFrame.gearBadge:Hide()
+    end
 end
 
 -- Update display with current data
@@ -288,6 +312,9 @@ local function UpdateDisplay()
         PowerFrame.xpBonusText:SetPoint("BOTTOM", PowerFrame, "BOTTOM", 0, -14)
         PowerFrame.xpBonusText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
     end
+
+    -- Update gear bonus notification badge
+    UpdateBadge()
 end
 
 -- Create the main power display frame
@@ -331,6 +358,14 @@ local function CreatePowerDisplay()
     xpBonusText:SetFont("Fonts\\FRIZQT__.TTF", 11, "OUTLINE")
     xpBonusText:SetText("+0%")
     PowerFrame.xpBonusText = xpBonusText
+
+    -- Create gear bonus notification badge (top-right corner)
+    local gearBadge = PowerFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    gearBadge:SetPoint("TOPRIGHT", PowerFrame, "TOPRIGHT", 5, 5)
+    gearBadge:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
+    gearBadge:SetText("")
+    gearBadge:Hide()  -- Initially hidden
+    PowerFrame.gearBadge = gearBadge
 
     -- Removed stat points display - stats auto-apply now
 
@@ -406,6 +441,15 @@ local function CreatePowerDisplay()
         GameTooltip:AddLine("Total Kills: " .. playerData.totalKills, 0.8, 0.8, 0.8, true)
         GameTooltip:AddLine("Total Quests: " .. playerData.totalQuests, 0.8, 0.8, 0.8, true)
         GameTooltip:AddLine(" ")
+
+        -- Show gear bonus badge explanation if there are unconfigured slots (using server count)
+        local unconfiguredCount = playerData.unconfiguredGearSlots or 0
+        if unconfiguredCount > 0 then
+            GameTooltip:AddLine("|cffFF8800[" .. unconfiguredCount .. "]|r = Unconfigured gear slots", 1, 0.8, 0.4, true)
+            GameTooltip:AddLine("Use Book of Power to configure bonuses", 0.7, 0.7, 0.7, true)
+            GameTooltip:AddLine(" ")
+        end
+
         GameTooltip:AddLine("Right-Click to toggle minimal mode", 0.5, 0.5, 0.5, true)
         GameTooltip:AddLine("Shift + Drag to move", 0.5, 0.5, 0.5, true)
         GameTooltip:AddLine("/egc infinitepower unlock - to move/scale", 0.5, 0.5, 0.5, true)
@@ -581,13 +625,19 @@ function InfinitePowerModule:OnInitialize()
     -- Listen for system messages from server (INF_PWR prefix)
     local eventFrame = CreateFrame("Frame")
     eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
+    eventFrame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")  -- Track gear changes
     eventFrame:SetScript("OnEvent", function(self, event, message)
-        -- Check if message starts with our prefix
-        if string.match(message, "^" .. ADDON_PREFIX .. ":") then
-            -- Remove prefix and parse
-            local data = string.gsub(message, "^" .. ADDON_PREFIX .. ":", "")
-            ParseServerMessage(data)
-            UpdateDisplay()
+        if event == "CHAT_MSG_SYSTEM" then
+            -- Check if message starts with our prefix
+            if string.match(message, "^" .. ADDON_PREFIX .. ":") then
+                -- Remove prefix and parse
+                local data = string.gsub(message, "^" .. ADDON_PREFIX .. ":", "")
+                ParseServerMessage(data)
+                UpdateDisplay()
+            end
+        elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+            -- Update badge when equipment changes
+            UpdateBadge()
         end
     end)
 
