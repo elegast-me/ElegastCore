@@ -37,6 +37,7 @@ local function ResetPlayerData()
     playerData.stats = {}
     playerData.gearBonuses = {} -- Gear bonus data: slot -> {statType, amount}
     playerData.unconfiguredGearSlots = 0 -- Server-calculated count of unconfigured gear slots
+    playerData.statAllocations = {} -- Stat allocation percentages: addonStatID -> percentage
 end
 
 -- Stat type configuration
@@ -105,6 +106,19 @@ for slot, invSlot in pairs(SLOT_TO_INVENTORY) do
     INVENTORY_TO_SLOT[invSlot] = slot
 end
 
+-- Server ID -> Addon ID mapping for stat allocations
+local SERVER_TO_ADDON_STAT_MAP = {
+    [0] = 2,  -- Server STA (0) -> Addon STA (2)
+    [1] = 0,  -- Server STR (1) -> Addon STR (0)
+    [2] = 1,  -- Server AGI (2) -> Addon AGI (1)
+    [3] = 3,  -- Server INT (3) -> Addon INT (3)
+    [4] = 4,  -- Server SPI (4) -> Addon SPI (4)
+    [5] = 7,  -- Server SP (5) -> Addon SP (7)
+    [6] = 8,  -- Server AP (6) -> Addon AP (8)
+    [7] = 5,  -- Server CRIT (7) -> Addon CRIT (5)
+    [8] = 6,  -- Server HASTE (8) -> Addon HASTE (6)
+}
+
 -- Helper: Get stat name from stat type ID
 local function GetStatName(statType)
     for _, stat in ipairs(STAT_TYPES) do
@@ -113,6 +127,69 @@ local function GetStatName(statType)
         end
     end
     return "Unknown"
+end
+
+-- Helper: Build allocation summary string (e.g., "40% STA, 40% STR, 20% AGI")
+local function BuildAllocationSummary()
+    if not playerData.statAllocations then return "" end
+
+    local allocList = {}
+    for addonStatID, percentage in pairs(playerData.statAllocations) do
+        if percentage > 0 then
+            local statShortName = nil
+            for _, stat in ipairs(STAT_TYPES) do
+                if stat.id == addonStatID then
+                    statShortName = stat.shortName
+                    break
+                end
+            end
+            if statShortName then
+                table.insert(allocList, {pct = percentage, name = statShortName})
+            end
+        end
+    end
+
+    table.sort(allocList, function(a, b) return a.pct > b.pct end)
+
+    local parts = {}
+    for _, alloc in ipairs(allocList) do
+        table.insert(parts, alloc.pct .. "% " .. alloc.name)
+    end
+
+    return table.concat(parts, ", ")
+end
+
+-- Helper: Calculate gear bonus totals by stat type
+local function CalculateGearBonusTotals()
+    local totals = {}
+    for slot, bonus in pairs(playerData.gearBonuses) do
+        if bonus.amount > 0 then
+            local statType = bonus.statType
+            totals[statType] = (totals[statType] or 0) + bonus.amount
+        end
+    end
+    return totals
+end
+
+-- Helper: Validate allocations total 100%
+local function ValidateAllocations()
+    if not playerData.statAllocations then return true end
+
+    -- Check if there are any allocations at all
+    local hasAllocations = false
+    local total = 0
+    for _, percentage in pairs(playerData.statAllocations) do
+        hasAllocations = true
+        total = total + percentage
+    end
+
+    -- If there are allocations, they should total 100%
+    if hasAllocations then
+        return total == 100
+    else
+        -- No allocations is valid (default state)
+        return true
+    end
 end
 
 -- Chat filter to hide our messages from displaying in chat
@@ -143,7 +220,8 @@ local function SavePlayerData()
         questsNeeded = playerData.questsNeeded,
         stats = playerData.stats,
         gearBonuses = playerData.gearBonuses,
-        unconfiguredGearSlots = playerData.unconfiguredGearSlots
+        unconfiguredGearSlots = playerData.unconfiguredGearSlots,
+        statAllocations = playerData.statAllocations
     }
 end
 
@@ -186,6 +264,7 @@ local function LoadPlayerData()
         playerData.stats = saved.stats or {}
         playerData.gearBonuses = saved.gearBonuses or {}
         playerData.unconfiguredGearSlots = saved.unconfiguredGearSlots or 0
+        playerData.statAllocations = saved.statAllocations or {}
         return true
     end
     return false
@@ -244,6 +323,27 @@ local function ParseServerMessage(message)
         elseif key == "UNCFG" then
             -- Parse unconfigured gear slots count (from server, Issue #7)
             playerData.unconfiguredGearSlots = tonumber(parts[2]) or 0
+        elseif key == "PCT" then
+            playerData.statAllocations = {}
+            if parts[2] then
+                local pctData = table.concat(parts, ":", 2)
+                local serverAllocations = {}
+                local i = 0
+
+                for pct in string.gmatch(pctData, "(%d+)") do
+                    serverAllocations[i] = tonumber(pct) or 0
+                    i = i + 1
+                end
+
+                -- Map server IDs to addon IDs
+                for serverID = 0, 8 do
+                    local addonID = SERVER_TO_ADDON_STAT_MAP[serverID]
+                    local percentage = serverAllocations[serverID] or 0
+                    if addonID and percentage > 0 then
+                        playerData.statAllocations[addonID] = percentage
+                    end
+                end
+            end
         end
     end
 
@@ -392,7 +492,8 @@ local function CreatePowerDisplay()
         GameTooltip:AddLine("Quests: " .. playerData.questsThisStack .. "/" .. playerData.questsNeeded .. " (" .. questPercent .. "%)", 0.4, 1.0, 1.0, true)
         GameTooltip:AddLine(" ")
 
-        -- Show stat bonuses
+        -- Show stat bonuses with gear bonuses aggregated by stat type
+        local gearBonusTotals = next(playerData.gearBonuses) and CalculateGearBonusTotals() or {}
         local hasStats = false
         for statType, amount in pairs(playerData.stats) do
             if amount > 0 then
@@ -402,54 +503,47 @@ local function CreatePowerDisplay()
         end
 
         if hasStats then
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("Bonus Stats:", 0.7, 0.7, 0.7, true)
+            GameTooltip:AddLine("Stats:", 0.7, 0.7, 0.7, true)
             for statType, amount in pairs(playerData.stats) do
                 if amount > 0 then
                     local statName = GetStatName(statType)
-                    GameTooltip:AddLine("  +" .. amount .. " " .. statName, 0.4, 1.0, 0.4, true)
+                    local gearBonus = gearBonusTotals[statType] or 0
+                    if gearBonus > 0 then
+                        GameTooltip:AddLine("  " .. statName .. ": +" .. amount .. " (+" .. gearBonus .. " gear)", 0.4, 1.0, 0.4, true)
+                    else
+                        GameTooltip:AddLine("  " .. statName .. ": +" .. amount, 0.4, 1.0, 0.4, true)
+                    end
                 end
             end
+        else
+            GameTooltip:AddLine("Stats: No active stat bonuses", 0.7, 0.7, 0.7, true)
         end
 
-        -- Show gear bonuses summary
-        local hasGearBonuses = false
+        -- Show total gear bonus count
         local totalGearBonus = 0
-        for slot, bonus in pairs(playerData.gearBonuses) do
-            if bonus.amount > 0 then
-                hasGearBonuses = true
-                totalGearBonus = totalGearBonus + bonus.amount
-            end
+        for _, bonus in pairs(gearBonusTotals) do
+            totalGearBonus = totalGearBonus + bonus
         end
-
-        if hasGearBonuses then
-            GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("Gear Bonuses:", 0.7, 0.7, 0.7, true)
-            for slot, bonus in pairs(playerData.gearBonuses) do
-                if bonus.amount > 0 then
-                    local slotName = EQUIPMENT_SLOTS[slot] or "Unknown"
-                    local statName = GetStatName(bonus.statType)
-                    GameTooltip:AddLine("  " .. slotName .. ": +" .. bonus.amount .. " " .. statName, 0.4, 0.8, 1.0, true)
-                end
-            end
+        if totalGearBonus > 0 then
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine("Total Gear Bonus: +" .. totalGearBonus .. " stats", 0.4, 1.0, 0.8, true)
         end
 
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Lifetime Stats:", 0.7, 0.7, 0.7, true)
-        GameTooltip:AddLine("Total Kills: " .. playerData.totalKills, 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine("Total Quests: " .. playerData.totalQuests, 0.8, 0.8, 0.8, true)
-        GameTooltip:AddLine(" ")
-
         -- Show gear bonus badge explanation if there are unconfigured slots (using server count)
         local unconfiguredCount = playerData.unconfiguredGearSlots or 0
         if unconfiguredCount > 0 then
+            GameTooltip:AddLine(" ")
             GameTooltip:AddLine("|cffFF8800[" .. unconfiguredCount .. "]|r = Unconfigured gear slots", 1, 0.8, 0.4, true)
             GameTooltip:AddLine("Use Book of Power to configure bonuses", 0.7, 0.7, 0.7, true)
-            GameTooltip:AddLine(" ")
         end
 
+        -- Show allocation validation warning if needed (only if allocations exist)
+        if next(playerData.statAllocations) and not ValidateAllocations() then
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("|cffff0000WARNING: Allocations don't total 100%!|r", 1, 0.3, 0.3, true)
+        end
+
+        GameTooltip:AddLine(" ")
         GameTooltip:AddLine("Right-Click to toggle minimal mode", 0.5, 0.5, 0.5, true)
         GameTooltip:AddLine("Shift + Drag to move", 0.5, 0.5, 0.5, true)
         GameTooltip:AddLine("/egc infinitepower unlock - to move/scale", 0.5, 0.5, 0.5, true)
@@ -759,6 +853,7 @@ function InfinitePowerModule:OnCommand(args)
         print("|cff888888Next Stack Progress:|r")
         print("  Kills: |cffFFFF00" .. playerData.killsThisStack .. "/" .. playerData.killsNeeded .. "|r")
         print("  Quests: |cffFFFF00" .. playerData.questsThisStack .. "/" .. playerData.questsNeeded .. "|r")
+
 
         -- Show gear bonus count
         local gearBonusCount = 0
