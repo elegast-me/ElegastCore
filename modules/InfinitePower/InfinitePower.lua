@@ -317,8 +317,8 @@ local function UpdateDisplay()
     -- Update gear bonus notification badge
     UpdateBadge()
 
-    -- Pulse effect when gaining new stack (similar to SpeedBuff)
-    if PowerFrame.lastStack ~= playerData.xpStacks then
+    -- Pulse effect when gaining new stack (similar to SpeedBuff, only on increases)
+    if PowerFrame.lastStack < playerData.xpStacks then
         PowerFrame.lastStack = playerData.xpStacks
 
         -- Start smooth scale animation
@@ -528,8 +528,6 @@ local function CreatePowerDisplay()
     PowerFrame.lastStack = 0  -- Track last stack level for animation
     PowerFrame.animationTime = 0
     PowerFrame.animationDuration = 0
-    PowerFrame.animationStartScale = 1.0
-    PowerFrame.animationTargetScale = 1.0
     PowerFrame.isAnimating = false
     PowerFrame.baseScale = 1.0  -- Store the base scale for animations
     PowerFrame.borderGlowTime = 0
@@ -595,11 +593,6 @@ local function CreatePowerDisplay()
             end
         end
 
-        -- Periodic update check
-        updateTimer = updateTimer + elapsed
-        if updateTimer >= 0.5 then
-            updateTimer = 0
-        end
     end)
 
     return PowerFrame
@@ -687,6 +680,11 @@ function InfinitePowerModule:OnInitialize()
 
     -- Create power display
     CreatePowerDisplay()
+
+    -- Initialize lastStack to current stack value to prevent animation on first login
+    if PowerFrame then
+        PowerFrame.lastStack = playerData.xpStacks
+    end
 
     -- Setup tooltip hooks for gear bonuses
     SetupTooltipHooks()
