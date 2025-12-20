@@ -21,7 +21,7 @@ local TAFrame = nil
 
 -- Current player data
 local taData = {
-    isActive = false
+    difficultyLevel = 0  -- 0=OFF, 1=TA-1, 2=TA-2 EXTREME
 }
 
 -- Save player data to SavedVariables
@@ -30,7 +30,7 @@ local function SavePlayerData()
         ElegastCoreDB.ThreatenedAzeroth = {}
     end
     ElegastCoreDB.ThreatenedAzeroth.playerData = {
-        isActive = taData.isActive
+        difficultyLevel = taData.difficultyLevel
     }
 end
 
@@ -38,7 +38,7 @@ end
 local function LoadPlayerData()
     if ElegastCoreDB.ThreatenedAzeroth and ElegastCoreDB.ThreatenedAzeroth.playerData then
         local saved = ElegastCoreDB.ThreatenedAzeroth.playerData
-        taData.isActive = saved.isActive or false
+        taData.difficultyLevel = saved.difficultyLevel or 0
         return true
     end
     return false
@@ -60,12 +60,12 @@ local function LoadMinimalMode()
     return false -- Default to normal mode
 end
 
--- Parse server message - format: "TA:status" where status is 0 or 1
+-- Parse server message - format: "TA:status" where status is 0, 1, or 2
 local function ParseServerMessage(message)
-    local status = string.match(message, "^TA:([01])")
+    local status = string.match(message, "^TA:(%d)")
 
     if status then
-        taData.isActive = (tonumber(status) == 1)
+        taData.difficultyLevel = tonumber(status)
         SavePlayerData() -- Save to persistent storage
         return true -- Data was found and parsed
     end
@@ -83,22 +83,34 @@ local function UpdateDisplay()
     -- Check minimal mode state
     local isMinimal = LoadMinimalMode()
 
+    -- Determine colors and text based on difficulty level
+    local statusText, statusIndicator, textColor, iconColor
+    if taData.difficultyLevel == 0 then  -- OFF
+        statusText = "TA"
+        statusIndicator = "OFF"
+        textColor = {0.4, 1.0, 0.4}      -- Green
+        iconColor = {0.4, 1.0, 0.4, 1.0} -- Green
+    elseif taData.difficultyLevel == 1 then  -- TA-1
+        statusText = "TA"
+        statusIndicator = "TA-1"
+        textColor = {1.0, 0.8, 0.0}      -- Orange/Yellow
+        iconColor = {1.0, 0.8, 0.0, 1.0} -- Orange/Yellow
+    else  -- TA-2 EXTREME
+        statusText = "TA"
+        statusIndicator = "TA-2 EXT"
+        textColor = {0.8, 0.2, 0.2}      -- Red
+        iconColor = {0.8, 0.2, 0.2, 1.0} -- Red
+    end
+
     if isMinimal then
         -- Minimal Mode: Hide icon, show only text
         TAFrame.icon:Hide()
 
-        -- Update text based on active status
-        if taData.isActive then
-            TAFrame.statusText:SetText("TA")
-            TAFrame.statusText:SetTextColor(0.8, 0.2, 0.2) -- Red
-            TAFrame.statusIndicator:SetText("Active")
-            TAFrame.statusIndicator:SetTextColor(0.8, 0.2, 0.2)
-        else
-            TAFrame.statusText:SetText("TA")
-            TAFrame.statusText:SetTextColor(0.4, 1.0, 0.4) -- Green
-            TAFrame.statusIndicator:SetText("Inactive")
-            TAFrame.statusIndicator:SetTextColor(0.4, 1.0, 0.4)
-        end
+        -- Update text based on difficulty level
+        TAFrame.statusText:SetText(statusText)
+        TAFrame.statusText:SetTextColor(unpack(textColor))
+        TAFrame.statusIndicator:SetText(statusIndicator)
+        TAFrame.statusIndicator:SetTextColor(unpack(textColor))
 
         -- Reposition text for minimal mode (side-by-side)
         TAFrame.statusText:ClearAllPoints()
@@ -112,20 +124,12 @@ local function UpdateDisplay()
         -- Normal Mode: Show icon, position text as before
         TAFrame.icon:Show()
 
-        -- Update icon color and text based on active status
-        if taData.isActive then
-            TAFrame.icon:SetVertexColor(0.8, 0.2, 0.2, 1.0)  -- Red tint when active
-            TAFrame.statusText:SetText("TA")
-            TAFrame.statusText:SetTextColor(0.8, 0.2, 0.2) -- Red
-            TAFrame.statusIndicator:SetText("Active")
-            TAFrame.statusIndicator:SetTextColor(0.8, 0.2, 0.2)
-        else
-            TAFrame.icon:SetVertexColor(0.4, 1.0, 0.4, 1.0)  -- Green tint when inactive
-            TAFrame.statusText:SetText("TA")
-            TAFrame.statusText:SetTextColor(0.4, 1.0, 0.4) -- Green
-            TAFrame.statusIndicator:SetText("Inactive")
-            TAFrame.statusIndicator:SetTextColor(0.4, 1.0, 0.4)
-        end
+        -- Update icon color and text based on difficulty level
+        TAFrame.icon:SetVertexColor(unpack(iconColor))
+        TAFrame.statusText:SetText(statusText)
+        TAFrame.statusText:SetTextColor(unpack(textColor))
+        TAFrame.statusIndicator:SetText(statusIndicator)
+        TAFrame.statusIndicator:SetTextColor(unpack(textColor))
 
         -- Restore original positioning
         TAFrame.statusText:ClearAllPoints()
@@ -185,14 +189,18 @@ local function CreateDisplay()
     TAFrame:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("Threatened Azeroth", 0.5, 0.8, 1.0, 1, true)
-        
-        if taData.isActive then
-            GameTooltip:AddLine("Status: |cff00FF00Active|r", 1, 1, 1, true)
-            GameTooltip:AddLine("Creatures have increased health and damage", 0.8, 0.8, 0.8, true)
-            GameTooltip:AddLine("5 stacks per threshold (vs 1 without TA)", 0.8, 0.8, 0.8, true)
-        else
+
+        if taData.difficultyLevel == 0 then  -- OFF
             GameTooltip:AddLine("Status: |cffFF6666Inactive|r", 1, 1, 1, true)
             GameTooltip:AddLine("Speak to the Time-Keeper to activate", 0.8, 0.8, 0.8, true)
+        elseif taData.difficultyLevel == 1 then  -- TA-1
+            GameTooltip:AddLine("Status: |cffFFA500TA-1 ACTIVE|r", 1, 1, 1, true)
+            GameTooltip:AddLine("Creatures have increased health and damage", 0.8, 0.8, 0.8, true)
+            GameTooltip:AddLine("5 stacks per threshold (vs 1 without TA)", 0.8, 0.8, 0.8, true)
+        else  -- TA-2 EXTREME
+            GameTooltip:AddLine("Status: |cffFF0000TA-2 EXTREME ACTIVE|r", 1, 1, 1, true)
+            GameTooltip:AddLine("Creatures have significantly increased health and damage", 0.8, 0.8, 0.8, true)
+            GameTooltip:AddLine("10 stacks per threshold (vs 1 without TA)", 0.8, 0.8, 0.8, true)
         end
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine("Right-Click to toggle minimal mode", 0.5, 0.5, 0.5, true)
@@ -390,7 +398,15 @@ function ThreatenedAzerothModule:OnCommand(args)
         print("|cffFFFFFF/egc threatenedazeroth minimal [on/off]|r - Toggle minimal display mode")
         print(" ")
         print("|cff888888Current Status:|r")
-        print("  Status: |cff00FF00" .. (taData.isActive and "Active" or "Inactive") .. "|r")
+        local statusText
+        if taData.difficultyLevel == 0 then
+            statusText = "|cffFF6666Inactive|r"
+        elseif taData.difficultyLevel == 1 then
+            statusText = "|cffFFA500TA-1|r"
+        else
+            statusText = "|cffFF0000TA-2 EXTREME|r"
+        end
+        print("  Status: " .. statusText)
     end
 end
 
