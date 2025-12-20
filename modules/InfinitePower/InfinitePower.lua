@@ -1,11 +1,12 @@
 --[[
     InfinitePower Module for ElegastCore
     Displays XP stacks, stat points, gear bonuses, and allows stat allocation
+    Added animation notifications when IP stacks are gained (similar to SpeedBuff)
 ]]--
 
 -- Create module table
 local InfinitePowerModule = {
-    version = "1.1.0",
+    version = "1.1.1",
     name = "InfinitePower"
 }
 
@@ -315,6 +316,23 @@ local function UpdateDisplay()
 
     -- Update gear bonus notification badge
     UpdateBadge()
+
+    -- Pulse effect when gaining new stack (similar to SpeedBuff)
+    if PowerFrame.lastStack ~= playerData.xpStacks then
+        PowerFrame.lastStack = playerData.xpStacks
+
+        -- Start smooth scale animation
+        PowerFrame.animationTime = 0
+        PowerFrame.animationDuration = 0.4  -- 400ms
+        PowerFrame.animationStartScale = 1.0
+        PowerFrame.animationTargetScale = 1.0
+        PowerFrame.isAnimating = true
+
+        -- Start border glow
+        PowerFrame.borderGlowTime = 0
+        PowerFrame.borderGlowDuration = 0.5  -- 500ms
+        PowerFrame.isBorderGlowing = true
+    end
 end
 
 -- Create the main power display frame
@@ -498,12 +516,25 @@ local function CreatePowerDisplay()
             savedVars = {}
         end
         savedVars.scale = self:GetScale()
+        self.baseScale = self:GetScale()  -- Update base scale for animations
 
         if not ElegastCoreDB.InfinitePower then
             ElegastCoreDB.InfinitePower = {}
         end
         ElegastCoreDB.InfinitePower.position = savedVars
     end
+
+    -- Animation variables (similar to SpeedBuff)
+    PowerFrame.lastStack = 0  -- Track last stack level for animation
+    PowerFrame.animationTime = 0
+    PowerFrame.animationDuration = 0
+    PowerFrame.animationStartScale = 1.0
+    PowerFrame.animationTargetScale = 1.0
+    PowerFrame.isAnimating = false
+    PowerFrame.baseScale = 1.0  -- Store the base scale for animations
+    PowerFrame.borderGlowTime = 0
+    PowerFrame.borderGlowDuration = 0
+    PowerFrame.isBorderGlowing = false
 
     -- Make the frame scalable with griptape
     ElegastCore:MakeFrameScalable(PowerFrame)
@@ -512,6 +543,64 @@ local function CreatePowerDisplay()
     if PowerFrame.griptape then
         PowerFrame.griptape:Hide()
     end
+
+    -- Main update loop for smooth animations (similar to SpeedBuff)
+    local updateTimer = 0
+    PowerFrame:SetScript("OnUpdate", function(self, elapsed)
+        -- Handle scale animation (bounce effect)
+        if self.isAnimating then
+            self.animationTime = self.animationTime + elapsed
+            local progress = math.min(self.animationTime / self.animationDuration, 1.0)
+
+            if progress < 1.0 then
+                -- Bounce from baseScale -> baseScale*1.3 -> baseScale using smooth easing
+                local scale
+                local baseScale = self.baseScale or 1.0
+                if progress < 0.5 then
+                    -- First half: scale up by 30%
+                    local t = progress * 2  -- 0 to 1
+                    scale = baseScale + (baseScale * 0.3 * ElegastCore.Easing.EaseOutBack(t))
+                else
+                    -- Second half: scale back to base
+                    local t = (progress - 0.5) * 2  -- 0 to 1
+                    scale = (baseScale * 1.3) - (baseScale * 0.3 * t)
+                end
+                self:SetScale(scale)
+            else
+                self:SetScale(self.baseScale or 1.0)
+                self.isAnimating = false
+            end
+        end
+
+        -- Handle border glow animation
+        if self.isBorderGlowing then
+            self.borderGlowTime = self.borderGlowTime + elapsed
+            local progress = math.min(self.borderGlowTime / self.borderGlowDuration, 1.0)
+
+            if progress < 1.0 then
+                -- Fade green glow in then out
+                local alpha
+                if progress < 0.3 then
+                    -- Fade in
+                    alpha = progress / 0.3
+                    self.border:SetVertexColor(0.2, 1.0, 0.2, alpha)
+                else
+                    -- Fade out
+                    alpha = 1.0 - ((progress - 0.3) / 0.7)
+                    self.border:SetVertexColor(0.2, 1.0, 0.2, alpha)
+                end
+            else
+                self.border:SetVertexColor(0.4, 0.8, 1.0, 0)
+                self.isBorderGlowing = false
+            end
+        end
+
+        -- Periodic update check
+        updateTimer = updateTimer + elapsed
+        if updateTimer >= 0.5 then
+            updateTimer = 0
+        end
+    end)
 
     return PowerFrame
 end
@@ -617,6 +706,9 @@ function InfinitePowerModule:OnInitialize()
     -- Restore saved scale if available
     if savedVars.scale then
         PowerFrame:SetScale(savedVars.scale)
+        PowerFrame.baseScale = savedVars.scale  -- Initialize base scale for animations
+    else
+        PowerFrame.baseScale = 1.0  -- Default base scale
     end
 
     -- Register chat filter to hide INF_PWR messages
