@@ -12,4 +12,3 @@ Core.lua
 modules\SpeedBuff\SpeedBuff.lua
 modules\InfinitePower\InfinitePower.lua
 modules\ThreatenedAzeroth\ThreatenedAzeroth.lua
-modules\ThreatenedAzeroth\ThreatenedAzeroth.lua
