@@ -12,6 +12,31 @@ ElegastCore.version = "1.0.0"
 ElegastCoreDB = ElegastCoreDB or {}
 
 -- Module registration system
+-- AIO is bundled into this addon (see the .toc). If a player still has the old
+-- standalone "AIO" addon enabled, its files load too and AIO's globals are
+-- defined twice -- last one wins, which is undefined in practice and tends to
+-- surface as a broken classless UI that looks like a server bug.
+--
+-- GetAddOnInfo returns nil for an addon that is not installed at all, so this
+-- only fires for someone who genuinely still has the old folder.
+local function WarnIfStandaloneAIO()
+    if type(GetAddOnInfo) ~= "function" then return end
+    local ok, name, _, _, enabled = pcall(GetAddOnInfo, "AIO")
+    if ok and name and enabled then
+        local msg = "|cffFF6666ElegastCore:|r the standalone |cffFFFFFFAIO|r addon is still "
+                 .. "enabled. AIO is now bundled here -- please delete the old "
+                 .. "Interface\\AddOns\\AIO folder, or the interface may misbehave."
+        if DEFAULT_CHAT_FRAME then DEFAULT_CHAT_FRAME:AddMessage(msg) end
+    end
+end
+
+local aioWarnFrame = CreateFrame("Frame")
+aioWarnFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+aioWarnFrame:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    WarnIfStandaloneAIO()
+end)
+
 function ElegastCore:RegisterModule(name, moduleTable)
     if not name or not moduleTable then
         print("|cffFF6666ElegastCore Error:|r Invalid module registration")

@@ -2,13 +2,29 @@
 ## Title: ElegastCore
 ## Notes: Modular addon for ElegastCore server-specific features
 ## Author: ElegastCore Development Team
-## Version: 1.0.0
-## SavedVariables: ElegastCoreDB
+## Version: 1.1.0
+## SavedVariables: ElegastCoreDB, AIO_sv, AIO_sv_Addons
+## SavedVariablesPerCharacter: AIO_sv_char
 
-# Core system (must load first)
+# ─── AIO (bundled) ───────────────────────────────────────────────────────────
+# Server-to-client messaging by Rochet2 <https://github.com/Rochet2/AIO>, GPL v2.
+# Bundled so players install one addon instead of two -- the classless system's
+# UI is pushed from the server through AIO at runtime, so it must load FIRST and
+# is not optional.
+#
+# If you previously installed the standalone "AIO" addon, DELETE that folder.
+# Having both loaded defines AIO's globals twice.
+libs\AIO\Dep_LibWindow-1.1\LibStub.lua
+libs\AIO\Dep_LibWindow-1.1\LibWindow-1.1\LibWindow-1.1.lua
+libs\AIO\Dep_Smallfolk\smallfolk.lua
+libs\AIO\lualzw-zeros\lualzw.lua
+libs\AIO\queue.lua
+libs\AIO\AIO.lua
+
+# ─── Core (must load before the modules) ─────────────────────────────────────
 Core.lua
 
-# Modules (load order matters - add new modules here)
+# ─── Modules (load order matters - add new modules here) ─────────────────────
 modules\SpeedBuff\SpeedBuff.lua
 modules\InfinitePower\InfinitePower.lua
 modules\ThreatenedAzeroth\ThreatenedAzeroth.lua
