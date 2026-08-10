@@ -551,6 +551,10 @@ local function CreatePowerDisplay()
     progressBg:SetAllPoints(progressBar)
     progressBg:SetVertexColor(0.1, 0.1, 0.1, 0.8)
 
+    -- UpdateProgressBar re-anchors per display mode, but anchor once here too so
+    -- the frame is never laid out unpositioned if that call order ever changes.
+    progressBar:SetPoint("TOP", PowerFrame, "BOTTOM", 0, -26)
+
     PowerFrame.progressBar = progressBar
     PowerFrame.progressShown = 0    -- what the bar is drawing right now
     PowerFrame.progressTarget = 0   -- what the data says it should be
