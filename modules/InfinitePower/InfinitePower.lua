@@ -2,11 +2,13 @@
     InfinitePower Module for ElegastCore
     Displays XP stacks, stat points, gear bonuses, and allows stat allocation
     Added animation notifications when IP stacks are gained (similar to SpeedBuff)
+    Added a progress bar for the next stack, so accumulation is visible without
+    hovering for the tooltip (Issue #18)
 ]]--
 
 -- Create module table
 local InfinitePowerModule = {
-    version = "1.1.2",
+    version = "1.2.0",
     name = "InfinitePower"
 }
 
@@ -370,6 +372,52 @@ local function UpdateBadge()
     end
 end
 
+-- Progress bar geometry. Width matches the 60x60 widget frame.
+local PROGRESS_BAR_WIDTH = 60
+local PROGRESS_BAR_HEIGHT = 6
+local PROGRESS_TWEEN_DURATION = 0.35
+
+-- Kills and quests are alternative paths to the same stack -- the tooltip says
+-- "complete either" -- so the bar tracks whichever is closer, and takes the
+-- tooltip's colour for that path so the two agree at a glance.
+local function CalculateProgress()
+    local killFraction = 0
+    if playerData.killsNeeded and playerData.killsNeeded > 0 then
+        killFraction = playerData.killsThisStack / playerData.killsNeeded
+    end
+
+    local questFraction = 0
+    if playerData.questsNeeded and playerData.questsNeeded > 0 then
+        questFraction = playerData.questsThisStack / playerData.questsNeeded
+    end
+
+    if questFraction > killFraction then
+        return math.min(questFraction, 1), 0.4, 1.0, 1.0
+    end
+    return math.min(killFraction, 1), 1.0, 1.0, 0.4
+end
+
+-- Repositions and retargets the bar. Minimal mode drops the icon and pulls the
+-- text into the middle of the frame, so the bar moves up to sit right under it.
+local function UpdateProgressBar(isMinimal)
+    if not PowerFrame or not PowerFrame.progressBar then return end
+
+    local bar = PowerFrame.progressBar
+    local fraction, r, g, b = CalculateProgress()
+
+    bar:SetStatusBarColor(r, g, b)
+    bar:ClearAllPoints()
+    bar:SetPoint("TOP", PowerFrame, "BOTTOM", 0, isMinimal and -4 or -26)
+    bar:Show()
+
+    if PowerFrame.progressTarget ~= fraction then
+        PowerFrame.progressTarget = fraction
+        PowerFrame.progressTweenTime = 0
+        PowerFrame.progressTweenFrom = PowerFrame.progressShown or 0
+        PowerFrame.isProgressTweening = true
+    end
+end
+
 -- Update display with current data
 local function UpdateDisplay()
     if not PowerFrame then return end
@@ -416,6 +464,9 @@ local function UpdateDisplay()
 
     -- Update gear bonus notification badge
     UpdateBadge()
+
+    -- Update progress toward the next stack (Issue #18)
+    UpdateProgressBar(isMinimal)
 
     -- Pulse effect when gaining new stack (similar to SpeedBuff, only on increases)
     if PowerFrame.lastStack < playerData.xpStacks then
@@ -484,6 +535,25 @@ local function CreatePowerDisplay()
     gearBadge:SetText("")
     gearBadge:Hide()  -- Initially hidden
     PowerFrame.gearBadge = gearBadge
+
+    -- Progress to the next stack (Issue #18). The server sends kill and quest
+    -- progress on every update; until now it only surfaced in the tooltip.
+    local progressBar = CreateFrame("StatusBar", nil, PowerFrame)
+    progressBar:SetWidth(PROGRESS_BAR_WIDTH)
+    progressBar:SetHeight(PROGRESS_BAR_HEIGHT)
+    progressBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    progressBar:GetStatusBarTexture():SetHorizTile(false)
+    progressBar:SetMinMaxValues(0, 1)
+    progressBar:SetValue(0)
+
+    local progressBg = progressBar:CreateTexture(nil, "BACKGROUND")
+    progressBg:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    progressBg:SetAllPoints(progressBar)
+    progressBg:SetVertexColor(0.1, 0.1, 0.1, 0.8)
+
+    PowerFrame.progressBar = progressBar
+    PowerFrame.progressShown = 0    -- what the bar is drawing right now
+    PowerFrame.progressTarget = 0   -- what the data says it should be
 
     -- Removed stat points display - stats auto-apply now
 
@@ -639,6 +709,22 @@ local function CreatePowerDisplay()
     -- Main update loop for smooth animations (similar to SpeedBuff)
     local updateTimer = 0
     PowerFrame:SetScript("OnUpdate", function(self, elapsed)
+        -- Fill the progress bar smoothly rather than snapping (Issue #18)
+        if self.isProgressTweening and self.progressBar then
+            self.progressTweenTime = self.progressTweenTime + elapsed
+            local progress = math.min(self.progressTweenTime / PROGRESS_TWEEN_DURATION, 1.0)
+            local eased = ElegastCore.Easing.EaseInOutQuad(progress)
+            local from = self.progressTweenFrom or 0
+            self.progressShown = from + (self.progressTarget - from) * eased
+            self.progressBar:SetValue(self.progressShown)
+
+            if progress >= 1.0 then
+                self.progressShown = self.progressTarget
+                self.progressBar:SetValue(self.progressShown)
+                self.isProgressTweening = false
+            end
+        end
+
         -- Handle scale animation (bounce effect)
         if self.isAnimating then
             self.animationTime = self.animationTime + elapsed
