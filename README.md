@@ -25,9 +25,29 @@ Unified, extensible addon for custom WotLK server enhancements. One addon for al
 
 ## Installation
 
-1. Copy `ElegastCore` folder to `World of Warcraft/Interface/AddOns/`
-2. Type `/reload` in-game
-3. Type `/egc` for commands
+1. Copy the `ElegastCore` folder to `World of Warcraft/Interface/AddOns/`
+2. Copy the server's `patch-D.MPQ` to `World of Warcraft/Data/`
+3. Delete `World of Warcraft/Cache/`
+4. Launch, then type `/egc` for commands
+
+That is everything — **two pieces**.
+
+> ### ⚠️ Upgrading from an earlier install
+>
+> **Delete `Interface/AddOns/AIO`.** AIO is now bundled inside this addon. Leaving the
+> old standalone copy enabled loads AIO twice, which can break the classless interface
+> in ways that look like a server bug. The addon warns you in chat on login if it
+> detects one.
+
+### What is bundled
+
+[AIO](https://github.com/Rochet2/AIO) by Rochet2 (GPL v2) lives in `libs/AIO/`. It is the
+server-to-client transport the classless system uses — the server pushes its UI code
+through it at runtime — so it is required, not optional. AIO's own dependencies,
+smallfolk and lualzw (both MIT), keep their licenses in place.
+
+This addon is therefore distributed under the **GPL v2**, matching AIO and the
+[server repository](https://github.com/elegast-me/ElegastCore-Classless).
 
 ---
 
