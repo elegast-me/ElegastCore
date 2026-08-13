@@ -1051,3 +1051,15 @@ end
 
 -- Register the module with ElegastCore
 ElegastCore:RegisterModule("InfinitePower", InfinitePowerModule)
+
+-- Test-only hook (tools/tests/test_infinite_power_logic.py). EGC_TEST_HOOKS is
+-- never set by the shipped client, so this table is never built in-game.
+if EGC_TEST_HOOKS then
+    InfinitePowerModule._test = {
+        ParseServerMessage = ParseServerMessage,
+        CalculateProgress = CalculateProgress,
+        CalculateGearBonusTotals = CalculateGearBonusTotals,
+        ResetPlayerData = ResetPlayerData,
+        GetPlayerData = function() return playerData end,
+    }
+end
