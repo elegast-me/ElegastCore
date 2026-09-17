@@ -50,6 +50,13 @@ local function LoadMinimalMode()
     return false -- Default to normal mode
 end
 
+-- Total movement percentage for a stack count at a per-stack rate.
+-- The per-stack rate comes from the server (SpeedBuff.SpeedIncreasePerStack);
+-- the caller supplies the fallback (20) when the server did not send one.
+local function SpeedPercentForStacks(currentStack, pctPerStack)
+    return currentStack * pctPerStack
+end
+
 -- Smooth easing helper (uses core easing functions)
 local function EaseOutElastic(t)
     return ElegastCore.Easing.EaseOutElastic(t)
@@ -71,12 +78,16 @@ local function UpdateSpeedBuffDisplay()
     local currentStack = SpeedBuffFrame.serverStack or 0
     local isMinimal = LoadMinimalMode()
 
+    -- Per-stack percentage the server actually applies (SpeedBuff.SpeedIncreasePerStack).
+    -- The server sends it; fall back to 20 for an older stacks-only server.
+    local pctPerStack = SpeedBuffFrame.serverPctPerStack or 20
+
     -- Update display
     if currentStack > 0 then
         SpeedBuffFrame.currentStack = currentStack
 
-        -- Calculate speed percentage
-        local speedPercent = currentStack * 20
+        -- Calculate speed percentage from the server-reported per-stack value
+        local speedPercent = SpeedPercentForStacks(currentStack, pctPerStack)
 
         if isMinimal then
             -- Minimal mode: Hide icon and edges, show compact text
@@ -207,16 +218,11 @@ local function CreateDisplayFrame()
         GameTooltip:SetText("Speed Buff", 0.4, 0.8, 1.0, 1, true)
 
         local currentStack = self.currentStack or 0
-        local speeds = {
-            [1] = "20%",
-            [2] = "40%",
-            [3] = "60%",
-            [4] = "80%"
-        }
+        local pctPerStack = self.serverPctPerStack or 20
 
         if currentStack > 0 then
             GameTooltip:AddLine("Stack " .. currentStack .. " of 4", 0.4, 1.0, 0.4, true)
-            GameTooltip:AddLine("Movement speed increased by " .. (speeds[currentStack] or "0%"), 1, 1, 1, true)
+            GameTooltip:AddLine("Movement speed increased by " .. (SpeedPercentForStacks(currentStack, pctPerStack)) .. "%", 1, 1, 1, true)
             GameTooltip:AddLine(" ")
             if currentStack < 4 then
                 GameTooltip:AddLine("Keep running to gain more stacks!", 0.7, 0.7, 1.0, true)
@@ -287,6 +293,8 @@ local function CreateDisplayFrame()
 
     -- Animation variables
     SpeedBuffFrame.serverStack = 0
+    SpeedBuffFrame.serverPctPerStack = nil
+    SpeedBuffFrame.serverTravelFormPct = nil
     SpeedBuffFrame.animationTime = 0
     SpeedBuffFrame.animationDuration = 0
     SpeedBuffFrame.animationStartScale = 1.0
@@ -469,10 +477,23 @@ function SpeedBuffModule:OnInitialize()
     local chatFrame = CreateFrame("Frame")
     chatFrame:RegisterEvent("CHAT_MSG_SYSTEM")
     chatFrame:SetScript("OnEvent", function(self, event, msg)
-        -- Look for our special message format: "SPEEDBUFF:STACK:X"
-        local stack = string.match(msg, "SPEEDBUFF:STACK:(%d+)")
+        -- "SPEEDBUFF:STACK:<stacks>:<pctPerStack>:<travelFormPct>" (#468 server
+        -- half, elegast-me/ElegastCore-Classless#595). Parse the optional fields
+        -- with a single match so an old server (stacks-only) and a new one both
+        -- work; the fields are additive, never removed.
+        local stack, pctPerStack, travelFormPct =
+            string.match(msg, "SPEEDBUFF:STACK:(%d+):(%-?%d+):(%-?%d+)")
+        if not stack then
+            stack = string.match(msg, "SPEEDBUFF:STACK:(%d+)")
+        end
         if stack then
             SpeedBuffFrame.serverStack = tonumber(stack) or 0
+            if pctPerStack then
+                SpeedBuffFrame.serverPctPerStack = tonumber(pctPerStack)
+            end
+            if travelFormPct then
+                SpeedBuffFrame.serverTravelFormPct = tonumber(travelFormPct)
+            end
             UpdateSpeedBuffDisplay()
         end
     end)
@@ -602,3 +623,23 @@ end
 
 -- Register the module with ElegastCore
 ElegastCore:RegisterModule("SpeedBuff", SpeedBuffModule)
+
+-- Test-only hook (tools/tests/test_speedbuff_logic.py). EGC_TEST_HOOKS is
+-- never set by the shipped client, so this table is never built in-game. The
+-- table is also stashed on a global: SpeedBuffModule is local to the file and
+-- otherwise unreachable from the test's ctypes harness. ParseSpeedStackMessage
+-- returns a table (fixed shape) rather than multiple return values, so the
+-- ctypes harness can read the fields without guessing how many landed.
+if EGC_TEST_HOOKS then
+    _SPEED_BUFF_TEST_HOOKS = {
+        SpeedPercentForStacks = SpeedPercentForStacks,
+        ParseSpeedStackMessage = function(msg)
+            local stack, pctPerStack, travelFormPct =
+                string.match(msg, "SPEEDBUFF:STACK:(%d+):(%-?%d+):(%-?%d+)")
+            if not stack then
+                stack = string.match(msg, "SPEEDBUFF:STACK:(%d+)")
+            end
+            return { stack = stack, pctPerStack = pctPerStack, travelFormPct = travelFormPct }
+        end,
+    }
+end
