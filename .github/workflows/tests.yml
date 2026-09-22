@@ -18,6 +18,6 @@ jobs:
       - name: Run tests
         run: |
           bash tools/tests/run.sh 2>&1 | tee test.log
-          if grep -qE "skipped '" test.log; then
+          if grep -qE "skipped=[1-9]|skipped '" test.log; then
             echo "::error::a test skipped -- liblua5.4 missing on the runner?"; exit 1
           fi
