@@ -1,0 +1,23 @@
+# Runs tools/tests/run.sh on every PR (#27). liblua5.4 is installed so the
+# Lua tests -- including the INF_PWR wire-format contract (#20/#23) -- actually
+# execute instead of skipping; a CI step that skips everything proves nothing.
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install liblua5.4
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq liblua5.4-0
+      - name: Run tests
+        run: |
+          bash tools/tests/run.sh 2>&1 | tee test.log
+          if grep -qE "skipped=[1-9]|skipped '" test.log; then
+            echo "::error::a test skipped -- liblua5.4 missing on the runner?"; exit 1
+          fi
